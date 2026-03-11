@@ -76,7 +76,7 @@ def prep_qc_args(
     output_dir: LatchDir,
 ) -> List[QCInput]:
     import pandas as pd
-    import scanpy as sc
+    from pathlib import Path
 
     defaults = {
         "min_counts": min_counts,
@@ -102,9 +102,7 @@ def prep_qc_args(
 
     inputs: List[QCInput] = []
     for h5ad_file in sample_h5ads:
-        adata = sc.read_h5ad(h5ad_file.local_path, backed="r")
-        sample_name = str(adata.obs["sample"].iloc[0])
-        adata.file.close()
+        sample_name = Path(h5ad_file.remote_path).stem
 
         params = {**defaults}
         if sample_name in overrides:
