@@ -121,29 +121,6 @@ def cosmx_qc(
     per_sample_overrides: Dict[str, Dict[str, float]] = {},
     output_dir: LatchDir = LatchDir("latch://40726.account/cosmx-test/out-dir/qc/"),
 ) -> List[LatchOutputDir]:
-    """
-    ## CosMx QC Filtering (Multi-Sample)
-
-    Takes a list of H5ADs from the conversion workflow, applies cell/gene
-    filters (with optional per-sample overrides), and outputs filtered
-    H5ADs with post-QC statistics.
-
-    ### Filtering steps
-    1. Remove cells from failed FOVs (`qcFlagsFOV != "Pass"`)
-    2. Filter cells by min/max total counts
-    3. Filter cells by min genes detected
-    4. Filter cells by negative probe ratio
-    5. Filter genes by min cells expressing
-
-    ### Per-sample overrides
-    Supply a dict like `{"Slide1": {"min_counts": 50, "max_counts": 800}}`
-    to override specific thresholds for individual samples. Unspecified
-    params fall back to the top-level defaults.
-
-    ### Outputs (per sample)
-    - `{sample_name}.h5ad` — filtered AnnData with raw counts
-    - `stats/` — post-filter statistics CSVs
-    """
     qc_inputs = prep_qc_args(
         sample_h5ads=sample_h5ads,
         min_counts=min_counts,

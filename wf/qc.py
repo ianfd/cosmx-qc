@@ -57,7 +57,6 @@ def cosmx_qc_task(input: QCInput) -> LatchOutputDir:
     return LatchDir(str(local_out), f"{input.output_dir.remote_directory}/{safe_name}")
 
 
-# ---------- stats helpers (unchanged) ----------
 
 def _save_cell_stats(adata, out_dir: Path, sample_name: str, stage: str) -> None:
     import pandas as pd
