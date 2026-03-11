@@ -40,12 +40,13 @@ metadata = LatchMetadata(
             display_name="Min Cells per Gene (default)",
             description="Default minimum cells expressing a gene to keep it.",
         ),
-        "per_sample_overrides": LatchParameter(
-            display_name="Per-Sample QC Overrides",
+        "per_sample_overrides_csv": LatchParameter(
+            display_name="Per-Sample QC Overrides (CSV)",
             description=(
-                "Optional dict mapping sample name -> dict of QC param overrides. "
-                'E.g. {"Slide1": {"min_counts": 50, "max_counts": 800}}. '
-                "Only the params you specify are overridden; the rest use defaults."
+                "Optional CSV with sample name as the index column and QC param "
+                "columns (min_counts, max_counts, min_genes, max_neg_probe_ratio, "
+                "min_cells_per_gene). Only include rows/columns you want to override; "
+                "missing values fall back to the top-level defaults."
             ),
         ),
         "output_dir": LatchParameter(
@@ -57,6 +58,12 @@ metadata = LatchMetadata(
 )
 
 
+VALID_OVERRIDE_KEYS = {
+    "min_counts", "max_counts", "min_genes",
+    "max_neg_probe_ratio", "min_cells_per_gene",
+}
+
+
 @small_task
 def prep_qc_args(
     sample_h5ads: List[LatchFile],
@@ -65,9 +72,10 @@ def prep_qc_args(
     min_genes: int,
     max_neg_probe_ratio: float,
     min_cells_per_gene: int,
-    per_sample_overrides: Dict[str, Dict[str, float]],
+    per_sample_overrides_csv: Optional[LatchFile],
     output_dir: LatchDir,
 ) -> List[QCInput]:
+    import pandas as pd
     import scanpy as sc
 
     defaults = {
@@ -78,6 +86,20 @@ def prep_qc_args(
         "min_cells_per_gene": min_cells_per_gene,
     }
 
+    overrides: Dict[str, Dict[str, float]] = {}
+    if per_sample_overrides_csv is not None:
+        df = pd.read_csv(per_sample_overrides_csv.local_path, index_col=0)
+        bad_cols = set(df.columns) - VALID_OVERRIDE_KEYS
+        if bad_cols:
+            raise ValueError(
+                f"Unknown columns in overrides CSV: {bad_cols}. "
+                f"Valid columns: {VALID_OVERRIDE_KEYS}"
+            )
+        for sample_name, row in df.iterrows():
+            overrides[str(sample_name)] = {
+                k: v for k, v in row.items() if pd.notna(v)
+            }
+
     inputs: List[QCInput] = []
     for h5ad_file in sample_h5ads:
         adata = sc.read_h5ad(h5ad_file.local_path, backed="r")
@@ -85,14 +107,9 @@ def prep_qc_args(
         adata.file.close()
 
         params = {**defaults}
-        if sample_name in per_sample_overrides:
-            for k, v in per_sample_overrides[sample_name].items():
-                if k not in defaults:
-                    raise ValueError(
-                        f"Unknown override key '{k}' for sample '{sample_name}'. "
-                        f"Valid keys: {list(defaults.keys())}"
-                    )
-                params[k] = type(defaults[k])(v) 
+        if sample_name in overrides:
+            for k, v in overrides[sample_name].items():
+                params[k] = type(defaults[k])(v)
 
         inputs.append(
             QCInput(
@@ -118,7 +135,7 @@ def cosmx_qc(
     min_genes: int = 5,
     max_neg_probe_ratio: float = 0.02,
     min_cells_per_gene: int = 10,
-    per_sample_overrides: Dict[str, Dict[str, float]] = {},
+    per_sample_overrides_csv: Optional[LatchFile] = None,
     output_dir: LatchDir = LatchDir("latch://40726.account/cosmx-test/out-dir/qc/"),
 ) -> List[LatchOutputDir]:
     qc_inputs = prep_qc_args(
@@ -128,7 +145,7 @@ def cosmx_qc(
         min_genes=min_genes,
         max_neg_probe_ratio=max_neg_probe_ratio,
         min_cells_per_gene=min_cells_per_gene,
-        per_sample_overrides=per_sample_overrides,
+        per_sample_overrides_csv=per_sample_overrides_csv,
         output_dir=output_dir,
     )
 
@@ -147,9 +164,7 @@ LaunchPlan(
         "min_genes": 5,
         "max_neg_probe_ratio": 0.02,
         "min_cells_per_gene": 10,
-        "per_sample_overrides": {
-            "GSE282193_Slide1": {"min_counts": 50, "max_counts": 400},
-        },
+        "per_sample_overrides_csv": None,
         "output_dir": LatchDir("latch://40726.account/cosmx-test/out-dir/qc/"),
     },
 )
